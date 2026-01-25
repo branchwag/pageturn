@@ -1,7 +1,6 @@
 use eframe::egui;
 use eframe::wasm_bindgen::JsCast;
 use egui::{Color32, FontId, Pos2, Rect, Rounding, Stroke, Vec2};
-use std::f32::consts::PI;
 
 fn main() {
     // Redirect panic messages to console.error
@@ -217,7 +216,7 @@ impl JournalApp {
         &self,
         ui: &mut egui::Ui,
         rect: Rect,
-        post: &BlogPost,
+        _post: &BlogPost,
         progress: f32,
         turning_right: bool,
     ) {
@@ -283,7 +282,7 @@ impl eframe::App for JournalApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Animation loop
         if self.is_turning {
-            let delta = 0.025; // Animation speed
+            let delta = 0.04; // Animation speed - faster
             self.page_turn_progress += delta;
 
             if self.page_turn_progress >= 1.0 {
@@ -291,9 +290,9 @@ impl eframe::App for JournalApp {
                 self.is_turning = false;
 
                 if self.turn_direction > 0 {
-                    self.current_page = (self.current_page + 1).min(self.posts.len() - 1);
+                    self.current_page = (self.current_page + 2).min(self.posts.len() - 1);
                 } else {
-                    self.current_page = self.current_page.saturating_sub(1);
+                    self.current_page = self.current_page.saturating_sub(2);
                 }
             }
 
@@ -337,74 +336,128 @@ impl eframe::App for JournalApp {
 
                 // Draw pages based on animation state
                 if !self.is_turning {
-                    // Static view - show current page on right, previous on left
-                    if self.current_page > 0 {
+                    // Static view - show proper spread
+                    if self.current_page == 0 {
+                        // First page alone on right
+                        ui.painter().rect_filled(
+                            left_rect,
+                            Rounding::same(2.0),
+                            Color32::from_rgb(245, 235, 210),
+                        );
+                        self.draw_parchment_page(ui, right_rect, &self.posts[0], false);
+                    } else {
+                        // After first turn, show pairs: (1,2), (3,4), etc
+                        // current_page is 2 after first turn, so show pages 1 and 2
                         self.draw_parchment_page(
                             ui,
                             left_rect,
                             &self.posts[self.current_page - 1],
                             true,
                         );
-                    } else {
-                        // Blank left page for first entry
-                        ui.painter().rect_filled(
-                            left_rect,
-                            Rounding::same(2.0),
-                            Color32::from_rgb(245, 235, 210),
-                        );
+                        if self.current_page < self.posts.len() {
+                            self.draw_parchment_page(
+                                ui,
+                                right_rect,
+                                &self.posts[self.current_page],
+                                false,
+                            );
+                        } else {
+                            ui.painter().rect_filled(
+                                right_rect,
+                                Rounding::same(2.0),
+                                Color32::from_rgb(245, 235, 210),
+                            );
+                        }
                     }
-
-                    self.draw_parchment_page(ui, right_rect, &self.posts[self.current_page], false);
                 } else {
                     // Animation in progress
                     if self.turn_direction > 0 {
-                        // Turning forward
-                        if self.current_page > 0 {
-                            self.draw_parchment_page(
-                                ui,
-                                left_rect,
-                                &self.posts[self.current_page - 1],
-                                true,
-                            );
+                        // Turning forward - show what will be on LEFT after the turn completes
+                        if self.current_page == 0 {
+                            // Turning from first page - Day 2 will be on left
+                            if self.posts.len() > 1 {
+                                self.draw_parchment_page(ui, left_rect, &self.posts[1], true);
+                            }
+                        } else {
+                            // Show the page that will be on left after turn (current + 1)
+                            if self.current_page + 1 < self.posts.len() {
+                                self.draw_parchment_page(
+                                    ui,
+                                    left_rect,
+                                    &self.posts[self.current_page + 1],
+                                    true,
+                                );
+                            } else {
+                                ui.painter().rect_filled(
+                                    left_rect,
+                                    Rounding::same(2.0),
+                                    Color32::from_rgb(245, 235, 210),
+                                );
+                            }
                         }
 
-                        // Show next page becoming visible on the left
-                        if self.current_page + 1 < self.posts.len() {
-                            let revealed_progress = self.page_turn_progress;
-                            let reveal_width = left_rect.width() * revealed_progress;
+                        // Show what's underneath the turning page (next page revealed on right)
+                        if self.current_page + 2 < self.posts.len() {
+                            let reveal_progress = self.page_turn_progress;
+                            let reveal_width = right_rect.width() * reveal_progress;
                             let reveal_rect = Rect::from_min_size(
-                                Pos2::new(left_rect.max.x - reveal_width, left_rect.min.y),
-                                Vec2::new(reveal_width, left_rect.height()),
+                                Pos2::new(right_rect.min.x, right_rect.min.y),
+                                Vec2::new(reveal_width, right_rect.height()),
                             );
                             self.draw_parchment_page(
                                 ui,
                                 reveal_rect,
-                                &self.posts[self.current_page + 1],
-                                true,
+                                &self.posts[self.current_page + 2],
+                                false,
                             );
                         }
 
-                        // Current page turning
-                        self.draw_turning_page(
-                            ui,
-                            right_rect,
-                            &self.posts[self.current_page],
-                            self.page_turn_progress,
-                            true,
-                        );
+                        // Current right page turning over
+                        if self.current_page < self.posts.len() {
+                            self.draw_turning_page(
+                                ui,
+                                right_rect,
+                                &self.posts[self.current_page],
+                                self.page_turn_progress,
+                                true,
+                            );
+                        }
                     } else {
-                        // Turning backward
-                        if self.current_page > 1 {
+                        // Turning backward - show the OLD spread being revealed
+                        // Show what will appear on the left after turning back
+                        if self.current_page == 2 {
+                            // Going back to first page - left is blank
+                            ui.painter().rect_filled(
+                                left_rect,
+                                Rounding::same(2.0),
+                                Color32::from_rgb(245, 235, 210),
+                            );
+                        } else if self.current_page > 2 {
+                            // Show what will be on left after turning back
                             self.draw_parchment_page(
                                 ui,
                                 left_rect,
-                                &self.posts[self.current_page - 2],
+                                &self.posts[self.current_page - 3],
                                 true,
                             );
                         }
 
-                        // Previous page turning back
-                        if self.current_page > 0 {
+                        // Show what's revealed underneath on the right (current - 1) as page turns back
+                        if self.current_page > 1 {
+                            let reveal_progress = self.page_turn_progress;
+                            let reveal_width = right_rect.width() * reveal_progress;
+                            let reveal_rect = Rect::from_min_size(
+                                Pos2::new(right_rect.max.x - reveal_width, right_rect.min.y),
+                                Vec2::new(reveal_width, right_rect.height()),
+                            );
+                            self.draw_parchment_page(
+                                ui,
+                                reveal_rect,
+                                &self.posts[self.current_page - 2],
+                                false,
+                            );
+
+                            // The right page turning back (not left!)
                             self.draw_turning_page(
                                 ui,
                                 right_rect,
@@ -455,7 +508,7 @@ impl eframe::App for JournalApp {
                 }
 
                 // Next button
-                if self.current_page < self.posts.len() - 1 && !self.is_turning {
+                if self.current_page + 2 < self.posts.len() && !self.is_turning {
                     let next_response = ui.allocate_rect(next_button_rect, egui::Sense::click());
 
                     let button_color = if next_response.hovered() {
@@ -482,8 +535,16 @@ impl eframe::App for JournalApp {
                 }
 
                 // Page counter
-                let counter_text =
-                    format!("Page {} of {}", self.current_page + 1, self.posts.len());
+                let counter_text = if self.current_page == 0 {
+                    format!("Page 1 of {}", self.posts.len())
+                } else {
+                    format!(
+                        "Pages {}-{} of {}",
+                        self.current_page,
+                        (self.current_page + 1).min(self.posts.len()),
+                        self.posts.len()
+                    )
+                };
                 ui.painter().text(
                     Pos2::new(center_x, button_y),
                     egui::Align2::CENTER_CENTER,
