@@ -442,7 +442,7 @@ impl eframe::App for JournalApp {
                     ui.painter().text(
                         prev_button_pos,
                         egui::Align2::CENTER_CENTER,
-                        "← Previous",
+                        "<- Previous",
                         FontId::proportional(14.0),
                         Color32::from_rgb(60, 50, 40),
                     );
@@ -469,7 +469,7 @@ impl eframe::App for JournalApp {
                     ui.painter().text(
                         next_button_pos,
                         egui::Align2::CENTER_CENTER,
-                        "Next →",
+                        "Next ->",
                         FontId::proportional(14.0),
                         Color32::from_rgb(60, 50, 40),
                     );
