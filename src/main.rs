@@ -1,6 +1,7 @@
 use eframe::egui;
 use eframe::wasm_bindgen::JsCast;
 use egui::{Color32, FontId, Pos2, Rect, Rounding, Stroke, Vec2};
+use std::f32::consts::PI;
 
 fn main() {
     // Redirect panic messages to console.error
@@ -36,10 +37,6 @@ fn main() {
 
 fn setup_custom_fonts(ctx: &egui::Context) {
     let fonts = egui::FontDefinitions::default();
-
-    // You can add a handwriting font here by loading TTF bytes
-    // For now, we'll use the default fonts with styling
-
     ctx.set_fonts(fonts);
 }
 
@@ -70,22 +67,22 @@ impl JournalApp {
             posts: vec![
                 BlogPost {
                     title: "Welcome...".to_string(),
-                    content: "This is the first entry.".to_string(),
+                    content: "This is the first entry in my journal. The beginning of a new chapter.".to_string(),
                     date: "January 2026".to_string(),
                 },
                 BlogPost {
                     title: "Day 2".to_string(),
-                    content: "This is the second entry.".to_string(),
+                    content: "Another day, another page. The journey continues with new discoveries and insights.".to_string(),
                     date: "January 2026".to_string(),
                 },
                 BlogPost {
                     title: "Day 3".to_string(),
-                    content: "This is the third entry.".to_string(),
+                    content: "Reflections on the path so far. Sometimes the smallest moments hold the greatest meaning.".to_string(),
                     date: "January 2026".to_string(),
                 },
                 BlogPost {
                     title: "Day 4".to_string(),
-                    content: "This is the fourth entry.".to_string(),
+                    content: "Looking forward to what comes next. Each page turn reveals new possibilities.".to_string(),
                     date: "January 2026".to_string(),
                 },
             ],
@@ -212,68 +209,184 @@ impl JournalApp {
         }
     }
 
-    fn draw_turning_page(
+    fn draw_curling_page(
         &self,
         ui: &mut egui::Ui,
         rect: Rect,
-        _post: &BlogPost,
+        post: &BlogPost,
         progress: f32,
         turning_right: bool,
     ) {
-        let painter = ui.painter();
+        // Use easing function for more natural motion
+        let eased_progress = self.ease_in_out_cubic(progress);
 
-        // Calculate the curl effect
-        let curl_width = rect.width() * (1.0 - progress.cos());
+        // Calculate curl angle (0 to PI)
+        let curl_angle = eased_progress * PI;
 
-        // Draw the visible part of the turning page
-        let visible_width = rect.width() - curl_width;
-        let visible_rect = if turning_right {
-            Rect::from_min_size(rect.min, Vec2::new(visible_width, rect.height()))
+        // The page curls from the edge, creating a cylinder effect
+        let page_width = rect.width();
+        let curl_radius = page_width * 0.3; // Radius of the curl cylinder
+
+        // How far the curl has traveled across the page
+        let curl_position = if turning_right {
+            rect.max.x - (page_width * eased_progress)
         } else {
-            Rect::from_min_size(
-                Pos2::new(rect.min.x + curl_width, rect.min.y),
-                Vec2::new(visible_width, rect.height()),
-            )
+            rect.min.x + (page_width * eased_progress)
         };
 
-        // Draw the page with perspective
-        let parchment_color = Color32::from_rgb(245, 235, 210);
-        painter.rect_filled(visible_rect, Rounding::same(2.0), parchment_color);
-
-        // Draw shadow for depth
-        let shadow_alpha = (progress * 40.0) as u8;
-        let shadow_color = Color32::from_rgba_premultiplied(0, 0, 0, shadow_alpha);
-
-        if turning_right {
-            painter.rect_filled(
-                Rect::from_min_size(
-                    Pos2::new(visible_rect.max.x - 30.0, visible_rect.min.y),
-                    Vec2::new(30.0, visible_rect.height()),
-                ),
-                Rounding::ZERO,
-                shadow_color,
-            );
+        // Draw the flat part of the page (not yet curled)
+        let flat_width = if turning_right {
+            (curl_position - rect.min.x).max(0.0)
         } else {
-            painter.rect_filled(
-                Rect::from_min_size(visible_rect.min, Vec2::new(30.0, visible_rect.height())),
-                Rounding::ZERO,
-                shadow_color,
-            );
-        }
+            (rect.max.x - curl_position).max(0.0)
+        };
 
-        // Draw the curled part (back of the page)
-        if curl_width > 5.0 {
-            let curl_rect = if turning_right {
-                Rect::from_min_size(
-                    Pos2::new(rect.min.x + visible_width, rect.min.y),
-                    Vec2::new(curl_width, rect.height()),
-                )
+        if flat_width > 1.0 {
+            let flat_rect = if turning_right {
+                Rect::from_min_size(rect.min, Vec2::new(flat_width, rect.height()))
             } else {
-                Rect::from_min_size(rect.min, Vec2::new(curl_width, rect.height()))
+                Rect::from_min_size(
+                    Pos2::new(curl_position, rect.min.y),
+                    Vec2::new(flat_width, rect.height()),
+                )
             };
 
-            let back_color = Color32::from_rgb(235, 225, 200);
-            painter.rect_filled(curl_rect, Rounding::same(2.0), back_color);
+            // Draw flat part with content
+            self.draw_parchment_page(ui, flat_rect, post, !turning_right);
+        }
+
+        // Now get painter for the curling parts
+        let painter = ui.painter();
+
+        // Draw the curling part
+        if curl_angle > 0.01 && curl_angle < PI - 0.01 {
+            // Front face of curl (what we see of the original page)
+            let front_width = curl_radius * curl_angle.sin();
+
+            if front_width > 1.0 {
+                let front_rect = if turning_right {
+                    Rect::from_min_size(
+                        Pos2::new(curl_position - front_width, rect.min.y),
+                        Vec2::new(front_width, rect.height()),
+                    )
+                } else {
+                    Rect::from_min_size(
+                        Pos2::new(curl_position, rect.min.y),
+                        Vec2::new(front_width, rect.height()),
+                    )
+                };
+
+                // Calculate lighting based on angle (front face gets darker as it curls)
+                let lighting = (1.0 - curl_angle / PI) * 0.7 + 0.3;
+                let parchment_color = Color32::from_rgb(
+                    (245.0 * lighting) as u8,
+                    (235.0 * lighting) as u8,
+                    (210.0 * lighting) as u8,
+                );
+
+                painter.rect_filled(front_rect, Rounding::same(2.0), parchment_color);
+
+                // Add gradient for depth
+                let gradient_width = 20.0;
+                let shadow_rect = if turning_right {
+                    Rect::from_min_size(
+                        Pos2::new(front_rect.min.x, front_rect.min.y),
+                        Vec2::new(gradient_width, front_rect.height()),
+                    )
+                } else {
+                    Rect::from_min_size(
+                        Pos2::new(front_rect.max.x - gradient_width, front_rect.min.y),
+                        Vec2::new(gradient_width, front_rect.height()),
+                    )
+                };
+
+                let shadow_alpha = (curl_angle.sin() * 60.0) as u8;
+                painter.rect_filled(
+                    shadow_rect,
+                    Rounding::ZERO,
+                    Color32::from_rgba_premultiplied(0, 0, 0, shadow_alpha),
+                );
+            }
+
+            // Back face of curl (reverse side of the page)
+            let back_width = curl_radius * (PI - curl_angle).sin();
+
+            if back_width > 1.0 {
+                let back_rect = if turning_right {
+                    Rect::from_min_size(
+                        Pos2::new(curl_position, rect.min.y),
+                        Vec2::new(back_width, rect.height()),
+                    )
+                } else {
+                    Rect::from_min_size(
+                        Pos2::new(curl_position - back_width, rect.min.y),
+                        Vec2::new(back_width, rect.height()),
+                    )
+                };
+
+                // Back of page is lighter/different color
+                let back_lighting = curl_angle.sin() * 0.6 + 0.4;
+                let back_color = Color32::from_rgb(
+                    (235.0 * back_lighting) as u8,
+                    (225.0 * back_lighting) as u8,
+                    (200.0 * back_lighting) as u8,
+                );
+
+                painter.rect_filled(back_rect, Rounding::same(2.0), back_color);
+
+                // Add highlight on the back edge
+                let highlight_width = 15.0;
+                let highlight_rect = if turning_right {
+                    Rect::from_min_size(
+                        Pos2::new(back_rect.max.x - highlight_width, back_rect.min.y),
+                        Vec2::new(highlight_width, back_rect.height()),
+                    )
+                } else {
+                    Rect::from_min_size(
+                        back_rect.min,
+                        Vec2::new(highlight_width, back_rect.height()),
+                    )
+                };
+
+                let highlight_alpha = ((PI - curl_angle).sin() * 40.0) as u8;
+                painter.rect_filled(
+                    highlight_rect,
+                    Rounding::ZERO,
+                    Color32::from_rgba_premultiplied(255, 255, 255, highlight_alpha),
+                );
+            }
+        }
+
+        // Draw shadow cast by the curling page onto the page behind it
+        let shadow_width = (curl_radius * 0.8 * eased_progress).min(80.0);
+        if shadow_width > 1.0 {
+            let shadow_rect = if turning_right {
+                Rect::from_min_size(
+                    Pos2::new(curl_position, rect.min.y),
+                    Vec2::new(shadow_width, rect.height()),
+                )
+            } else {
+                Rect::from_min_size(
+                    Pos2::new(curl_position - shadow_width, rect.min.y),
+                    Vec2::new(shadow_width, rect.height()),
+                )
+            };
+
+            let shadow_alpha = (eased_progress * 40.0) as u8;
+            painter.rect_filled(
+                shadow_rect,
+                Rounding::ZERO,
+                Color32::from_rgba_premultiplied(0, 0, 0, shadow_alpha),
+            );
+        }
+    }
+
+    // Easing function for smoother animation
+    fn ease_in_out_cubic(&self, t: f32) -> f32 {
+        if t < 0.5 {
+            4.0 * t * t * t
+        } else {
+            1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
         }
     }
 }
@@ -282,7 +395,7 @@ impl eframe::App for JournalApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Animation loop
         if self.is_turning {
-            let delta = 0.04; // Animation speed - faster
+            let delta = 0.03; // Animation speed
             self.page_turn_progress += delta;
 
             if self.page_turn_progress >= 1.0 {
@@ -336,7 +449,7 @@ impl eframe::App for JournalApp {
 
                 // Draw pages based on animation state
                 if !self.is_turning {
-                    // Static view - show proper spread
+                    // Static view
                     if self.current_page == 0 {
                         // First page alone on right
                         ui.painter().rect_filled(
@@ -346,8 +459,7 @@ impl eframe::App for JournalApp {
                         );
                         self.draw_parchment_page(ui, right_rect, &self.posts[0], false);
                     } else {
-                        // After first turn, show pairs: (1,2), (3,4), etc
-                        // current_page is 2 after first turn, so show pages 1 and 2
+                        // Show spread
                         self.draw_parchment_page(
                             ui,
                             left_rect,
@@ -372,49 +484,46 @@ impl eframe::App for JournalApp {
                 } else {
                     // Animation in progress
                     if self.turn_direction > 0 {
-                        // Turning forward - show what will be on LEFT after the turn completes
+                        // Turning forward
+                        // Draw the page that will be visible on the left after turn
                         if self.current_page == 0 {
-                            // Turning from first page - Day 2 will be on left
                             if self.posts.len() > 1 {
                                 self.draw_parchment_page(ui, left_rect, &self.posts[1], true);
                             }
-                        } else {
-                            // Show the page that will be on left after turn (current + 1)
-                            if self.current_page + 1 < self.posts.len() {
-                                self.draw_parchment_page(
-                                    ui,
-                                    left_rect,
-                                    &self.posts[self.current_page + 1],
-                                    true,
-                                );
-                            } else {
-                                ui.painter().rect_filled(
-                                    left_rect,
-                                    Rounding::same(2.0),
-                                    Color32::from_rgb(245, 235, 210),
-                                );
-                            }
-                        }
-
-                        // Show what's underneath the turning page (next page revealed on right)
-                        if self.current_page + 2 < self.posts.len() {
-                            let reveal_progress = self.page_turn_progress;
-                            let reveal_width = right_rect.width() * reveal_progress;
-                            let reveal_rect = Rect::from_min_size(
-                                Pos2::new(right_rect.min.x, right_rect.min.y),
-                                Vec2::new(reveal_width, right_rect.height()),
-                            );
+                        } else if self.current_page + 1 < self.posts.len() {
                             self.draw_parchment_page(
                                 ui,
-                                reveal_rect,
+                                left_rect,
+                                &self.posts[self.current_page + 1],
+                                true,
+                            );
+                        } else {
+                            ui.painter().rect_filled(
+                                left_rect,
+                                Rounding::same(2.0),
+                                Color32::from_rgb(245, 235, 210),
+                            );
+                        }
+
+                        // Draw the page being revealed underneath on the right
+                        if self.current_page + 2 < self.posts.len() {
+                            self.draw_parchment_page(
+                                ui,
+                                right_rect,
                                 &self.posts[self.current_page + 2],
                                 false,
                             );
+                        } else {
+                            ui.painter().rect_filled(
+                                right_rect,
+                                Rounding::same(2.0),
+                                Color32::from_rgb(245, 235, 210),
+                            );
                         }
 
-                        // Current right page turning over
+                        // Draw the curling right page on top
                         if self.current_page < self.posts.len() {
-                            self.draw_turning_page(
+                            self.draw_curling_page(
                                 ui,
                                 right_rect,
                                 &self.posts[self.current_page],
@@ -423,17 +532,15 @@ impl eframe::App for JournalApp {
                             );
                         }
                     } else {
-                        // Turning backward - show the OLD spread being revealed
-                        // Show what will appear on the left after turning back
+                        // Turning backward
+                        // Draw what will be on the left after turning back
                         if self.current_page == 2 {
-                            // Going back to first page - left is blank
                             ui.painter().rect_filled(
                                 left_rect,
                                 Rounding::same(2.0),
                                 Color32::from_rgb(245, 235, 210),
                             );
                         } else if self.current_page > 2 {
-                            // Show what will be on left after turning back
                             self.draw_parchment_page(
                                 ui,
                                 left_rect,
@@ -442,23 +549,17 @@ impl eframe::App for JournalApp {
                             );
                         }
 
-                        // Show what's revealed underneath on the right (current - 1) as page turns back
+                        // Draw the page being revealed on the right
                         if self.current_page > 1 {
-                            let reveal_progress = self.page_turn_progress;
-                            let reveal_width = right_rect.width() * reveal_progress;
-                            let reveal_rect = Rect::from_min_size(
-                                Pos2::new(right_rect.max.x - reveal_width, right_rect.min.y),
-                                Vec2::new(reveal_width, right_rect.height()),
-                            );
                             self.draw_parchment_page(
                                 ui,
-                                reveal_rect,
+                                right_rect,
                                 &self.posts[self.current_page - 2],
                                 false,
                             );
 
-                            // The right page turning back (not left!)
-                            self.draw_turning_page(
+                            // Draw the curling page
+                            self.draw_curling_page(
                                 ui,
                                 right_rect,
                                 &self.posts[self.current_page - 1],
