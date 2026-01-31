@@ -96,8 +96,8 @@ impl JournalApp {
         }
     }
 
-    fn total_pages(&self) -> usize {
-        self.posts.len()
+    fn total_spreads(&self) -> usize {
+        (self.posts.len() + 1) / 2
     }
 
     fn draw_book_spine(&self, painter: &egui::Painter, book_rect: Rect) {
@@ -433,7 +433,7 @@ impl JournalApp {
             );
         }
 
-        if self.current_page < self.total_pages().saturating_sub(1) {
+        if self.current_page < self.total_spreads().saturating_sub(1) {
             painter.text(
                 Pos2::new(book_rect.max.x - 20.0, hint_y),
                 egui::Align2::RIGHT_CENTER,
@@ -444,7 +444,7 @@ impl JournalApp {
         }
 
         // Page indicator
-        let page_text = format!("Page {} of {}", self.current_page + 1, self.total_pages().max(1));
+        let page_text = format!("Spread {} of {}", self.current_page + 1, self.total_spreads().max(1));
         painter.text(
             Pos2::new(book_rect.center().x, hint_y),
             egui::Align2::CENTER_CENTER,
@@ -494,38 +494,42 @@ impl eframe::App for JournalApp {
                     Color32::from_rgb(139, 90, 43),
                 );
 
-                // Get current posts
-                let left_post = if self.current_page > 0 {
-                    self.posts.get(self.current_page - 1)
-                } else {
-                    None
-                };
-                let right_post = self.posts.get(self.current_page);
+                // Get current spread's posts (left and right)
+                let left_post = self.posts.get(self.current_page * 2);
+                let right_post = self.posts.get(self.current_page * 2 + 1);
 
-                // Draw pages
+                // Draw pages - each spread shows two posts
                 if self.is_turning {
                     // Animate the page turn
                     if self.turn_direction > 0 {
-                        // Turning forward - right page curls
-                        self.draw_parchment_page(painter, left_page_rect, left_post, true, 1.0);
+                        // Turning forward - right page curls to reveal next spread
+                        let next_left = self.posts.get((self.current_page + 1) * 2);
+                        let next_right = self.posts.get((self.current_page + 1) * 2 + 1);
 
-                        // Draw the page being revealed underneath
-                        let next_post = self.posts.get(self.current_page + 1);
-                        self.draw_parchment_page(painter, right_page_rect, next_post, false, 0.8);
+                        // Draw the next spread underneath
+                        self.draw_parchment_page(painter, left_page_rect, next_left, true, 0.8);
+                        self.draw_parchment_page(painter, right_page_rect, next_right, false, 0.8);
 
-                        // Draw the curling page on top
+                        // Draw the curling page on top (current right page)
                         self.draw_curling_page(painter, right_page_rect, right_post, self.page_turn_progress, true);
                     } else {
-                        // Turning backward - left page curls
-                        let prev_post = if self.current_page > 1 {
-                            self.posts.get(self.current_page - 2)
+                        // Turning backward - revealing previous spread
+                        let prev_left = if self.current_page > 0 {
+                            self.posts.get((self.current_page - 1) * 2)
                         } else {
                             None
                         };
-                        self.draw_parchment_page(painter, left_page_rect, prev_post, true, 0.8);
+                        let prev_right = if self.current_page > 0 {
+                            self.posts.get((self.current_page - 1) * 2 + 1)
+                        } else {
+                            None
+                        };
 
-                        self.draw_parchment_page(painter, right_page_rect, right_post, false, 1.0);
+                        // Draw the previous spread underneath
+                        self.draw_parchment_page(painter, left_page_rect, prev_left, true, 0.8);
+                        self.draw_parchment_page(painter, right_page_rect, prev_right, false, 0.8);
 
+                        // Draw the curling page on top (current left page curling back)
                         self.draw_curling_page(painter, left_page_rect, left_post, self.page_turn_progress, false);
                     }
 
@@ -535,7 +539,7 @@ impl eframe::App for JournalApp {
                         self.is_turning = false;
                         self.page_turn_progress = 0.0;
                         if self.turn_direction > 0 {
-                            self.current_page = (self.current_page + 1).min(self.total_pages().saturating_sub(1));
+                            self.current_page = (self.current_page + 1).min(self.total_spreads().saturating_sub(1));
                         } else if self.current_page > 0 {
                             self.current_page -= 1;
                         }
@@ -543,7 +547,7 @@ impl eframe::App for JournalApp {
                     }
                     ctx.request_repaint();
                 } else {
-                    // Static view
+                    // Static view - show current spread
                     self.draw_parchment_page(painter, left_page_rect, left_post, true, 1.0);
                     self.draw_parchment_page(painter, right_page_rect, right_post, false, 1.0);
                 }
@@ -564,7 +568,7 @@ impl eframe::App for JournalApp {
                 if response.clicked() && !self.is_turning {
                     if let Some(pos) = response.interact_pointer_pos() {
                         let center_x = book_rect.center().x;
-                        if pos.x > center_x && self.current_page < self.total_pages().saturating_sub(1) {
+                        if pos.x > center_x && self.current_page < self.total_spreads().saturating_sub(1) {
                             // Click on right side - turn forward
                             self.is_turning = true;
                             self.turn_direction = 1;
@@ -589,7 +593,7 @@ impl eframe::App for JournalApp {
                         let drag_distance = current.x - start.x;
                         let threshold = book_width * 0.15;
 
-                        if drag_distance < -threshold && self.current_page < self.total_pages().saturating_sub(1) {
+                        if drag_distance < -threshold && self.current_page < self.total_spreads().saturating_sub(1) {
                             self.is_turning = true;
                             self.turn_direction = 1;
                             self.page_turn_progress = 0.0;
